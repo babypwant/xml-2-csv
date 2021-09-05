@@ -1,0 +1,67 @@
+html, body {
+    margin:0px;
+    height:100%;
+  }
+.app{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  overflow: auto;
+  background: rgb(248, 244, 207);
+  font-family: 'Roboto', sans-serif;
+}
+
+.upload-label{
+   display: flex;
+   flex-direction: column; 
+   cursor: pointer;
+   height: 200px;
+width: 200px;
+};
+
+.upload-img{
+height: 20px;
+width: 20px;
+}
+.image-header{
+    font-family: 'Roboto', sans-serif;
+}
+.upload-file-form{
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+}
+.dl-link{
+    
+}
+.dl-link:hover{
+    cursor: pointer;
+}
+.after-download{
+    font: 700;
+}
+.post-download-container{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 20px;
+};
+
+
+.myButton {
+    font-family: 'Roboto', sans-serif;
+
+}
+.myButton:hover {
+    cursor: pointer;
+}
+.myButton:active {
+	position:relative;
+	top:1px;
+}

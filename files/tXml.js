@@ -1,27 +1,91 @@
-let data = [];
-let xmlFile;
-let fileReader;
-const dataHeaders =
-    [
-        'property_id',
-        'account_number',
-        'name',
-        'address1',
-        'address2',
-        'city',
-        'state_prov',
-        'country_code',
-        'postal_code',
-        'primary_contact_id ',
-        'notes',
-        'survery_compliance',
-        'last_survey',
-        'next_survey'
-    ];
+// ==ClosureCompiler==
+// @output_file_name default.js
+// @compilation_level SIMPLE_OPTIMIZATIONS
+// ==/ClosureCompiler==
+// module.exports = {
+//     parse: parse,
+//     simplify: simplify,
+//     simplifyLostLess: simplifyLostLess,
+//     filter: filter,
+//     stringify: stringify,
+//     toContentString: toContentString,
+//     getElementById: getElementById,
+//     getElementsByClassName: getElementsByClassName,
+//     transformStream: transformStream,
+// };
+
+/**
+ * @author: Tobias Nickel
+ * @created: 06.04.2015
+ * I needed a small xmlparser chat can be used in a worker.
+ */
+
+/**
+ * @typedef tNode 
+ * @property {string} tagName 
+ * @property {object} attributes
+ * @property {(tNode|string)[]} children 
+ **/
+
+/**
+ * @typedef TParseOptions
+ * @property {number} [pos]
+ * @property {string[]} [noChildNodes]
+ * @property {boolean} [setPos]
+ * @property {boolean} [keepComments] 
+ * @property {boolean} [keepWhitespace]
+ * @property {boolean} [simplify]
+ * @property {(a: tNode, b: tNode) => boolean} [filter]
+ */
+
+/**
+ * parseXML / html into a DOM Object. with no validation and some failur tolerance
+ * @param {string} S your XML to parse
+ * @param {TParseOptions} [options]  all other options:
+ * @return {(tNode | string)[]}
+ */
+
+function tXml() {
+
+    this.simplify = simplify
+
+    function simplify(children) {
+        var out = { };
+        if (!children.length) {
+            return '';
+        }
+
+        if (children.length === 1 && typeof children[0] == 'string') {
+            return children[0];
+        }
+        // map each object
+        children.forEach(function (child) {
+            if (typeof child !== 'object') {
+                return;
+            }
+            if (!out[child.tagName])
+                out[child.tagName] = [];
+            var kids = simplify(child.children);
+            out[child.tagName].push(kids);
+            if (Object.keys(child.attributes).length) {
+                kids._attributes = child.attributes;
+            }
+        });
+
+        for (var i in out) {
+            if (out[i].length == 1) {
+                out[i] = out[i][0];
+            }
+        }
+
+        return out;
+    };
+
+}
 
 export function parse(S, options) {
     "txml";
-    options = options || {};
+    options = options || { };
 
     var pos = options.pos || 0;
     var keepComments = !!options.keepComments;
@@ -165,7 +229,7 @@ export function parse(S, options) {
     function parseNode() {
         pos++;
         const tagName = parseName();
-        const attributes = {};
+        const attributes = { };
         let children = [];
 
         // parsing attributes
@@ -280,16 +344,71 @@ export function parse(S, options) {
     }
 
     return out;
+}
+
+/**
+ * transform the DomObject to an object that is like the object of PHP`s simple_xmp_load_*() methods.
+ * this format helps you to write that is more likely to keep your program working, even if there a small changes in the XML schema.
+ * be aware, that it is not possible to reproduce the original xml from a simplified version, because the order of elements is not saved.
+ * therefore your program will be more flexible and easier to read.
+ *
+ * @param {tNode[]} children the childrenList
+ */
+export function simplify(children) {
+    try {
+
+        var out = { };
+        if (!children.length) {
+            return '';
+        }
+
+        if (children.length === 1 && typeof children[0] == 'string') {
+            return children[0];
+        }
+        // map each object
+        children.forEach(function (child) {
+            if (typeof child !== 'object') {
+                return;
+            }
+            if (!out[child.tagName])
+                out[child.tagName] = [];
+            var kids = simplify(child.children);
+            out[child.tagName].push(kids);
+            if (Object.keys(child.attributes).length) {
+                kids._attributes = child.attributes;
+            }
+        });
+
+        for (var i in out) {
+            if (out[i].length == 1) {
+                out[i] = out[i][0];
+            }
+        }
+
+        return out;
+    }
+    catch (e) {
+        return Error
+    };
 };
 
-export function simplify(children) {
-    var out = {};
+
+/**
+ * similar to simplify, but lost less
+ *
+ * @param {tNode[]} children the childrenList
+ */
+export function simplifyLostLess(children, parentAttributes = { }) {
+    var out = { };
     if (!children.length) {
-        return '';
+        return out;
     }
 
     if (children.length === 1 && typeof children[0] == 'string') {
-        return children[0];
+        return Object.keys(parentAttributes).length ? {
+            _attributes: parentAttributes,
+            value: children[0]
+        } : children[0];
     }
     // map each object
     children.forEach(function (child) {
@@ -298,97 +417,112 @@ export function simplify(children) {
         }
         if (!out[child.tagName])
             out[child.tagName] = [];
-        var kids = simplify(child.children);
+        var kids = simplifyLostLess(child.children || [], child.attributes);
         out[child.tagName].push(kids);
         if (Object.keys(child.attributes).length) {
             kids._attributes = child.attributes;
         }
     });
 
-    for (var i in out) {
-        if (out[i].length == 1) {
-            out[i] = out[i][0];
+    return out;
+};
+
+/**
+ * behaves the same way as Array.filter, if the filter method return true, the element is in the resultList
+ * @params children{Array} the children of a node
+ * @param f{function} the filter method
+ */
+export function filter(children, f, dept = 0, path = '') {
+    var out = [];
+    children.forEach(function (child, i) {
+        if (typeof (child) === 'object' && f(child, i, dept, path)) out.push(child);
+        if (child.children) {
+            var kids = filter(child.children, f, dept + 1, (path ? path + '.' : '') + i + '.' + child.tagName);
+            out = out.concat(kids);
+        }
+    });
+    return out;
+};
+
+/**
+ * stringify a previously parsed string object.
+ * this is useful,
+ *  1. to remove whitespace
+ * 2. to recreate xml data, with some changed data.
+ * @param {tNode} O the object to Stringify
+ */
+export function stringify(O) {
+    var out = '';
+
+    function writeChildren(O) {
+        if (O) {
+            for (var i = 0; i < O.length; i++) {
+                if (typeof O[i] == 'string') {
+                    out += O[i].trim();
+                } else {
+                    writeNode(O[i]);
+                }
+            }
         }
     }
+
+    function writeNode(N) {
+        out += "<" + N.tagName;
+        for (var i in N.attributes) {
+            if (N.attributes[i] === null) {
+                out += ' ' + i;
+            } else if (N.attributes[i].indexOf('"') === -1) {
+                out += ' ' + i + '="' + N.attributes[i].trim() + '"';
+            } else {
+                out += ' ' + i + "='" + N.attributes[i].trim() + "'";
+            }
+        }
+        if (N.tagName[0] === '?') {
+            out += '?>';
+            return;
+        }
+        out += '>';
+        writeChildren(N.children);
+        out += '</' + N.tagName + '>';
+    }
+    writeChildren(O);
 
     return out;
 };
 
-const handleFileRead = () => {
-    const content = fileReader.result; // we receive the file passed into FileReader
-    xmlFile = simplify(parse(content)) // parsing and simplifying the xml data to make the data arrays with objects within them.
-    data.push(dataHeaders); // we sets the headers for our csv file here
-    try {
-        xmlFile.Table_Facility.T_Facility.forEach((facility) => {
-            let metadata = [];
-            let previousDate;
-            let nextDate;
 
-            //Turnery operations for data we are looking for; does this data exists ? if so push data into metadata array : if not push in an empty string
-            facility.Facility_ID ? metadata.push(facility.Facility_ID) : metadata.push(""); //property_id
-            facility.Facility_Account_Number ? metadata.push(facility.Facility_Account_Number) : metadata.push(""); //account_number
-            facility.Facility_Name ? metadata.push(facility.Facility_Name) : metadata.push(""); //name
-            facility.Service_Address_Full ? metadata.push(facility.Service_Address_Full) : metadata.push(""); //address1
-            metadata.push(""); //add address2 ? cannot be found, testing empty string in its place
-            facility.Service_Address_City ? metadata.push(facility.Service_Address_City) : metadata.push(""); //city
-            facility.Service_Address_State ? metadata.push(facility.Service_Address_State) : metadata.push(""); //state_prov
-            metadata.push("US") //country code
-            facility.Service_Address_Zip_Code ? metadata.push(facility.Service_Address_Zip_Code) : metadata.push(""); //postal_code
-            facility.Facility_Contact_Mgr_ID ? metadata.push(facility.Facility_Contact_Mgr_ID) : metadata.push(""); //primary_contact_Id
-            facility.Facility_Comments_01 ? metadata.push(facility.Facility_Comments_01) : metadata.push(""); //notes
-            //survery_complicance,prev_date,next_date
-            // service_compliance false if no start date or end date,  empty if no start date provided, empty if no end date provided
-            if (facility.Facility_Survey_Date_Last && facility.Facility_Survey_Date_Next) {
-                metadata.push("False");
-                previousDate = facility.Facility_Survey_Date_Last.slice(0, 10) // cleans up date string
-                nextDate = facility.Facility_Survey_Date_Next.slice(0, 10);
-                metadata.push(previousDate);
-                metadata.push(nextDate);
-            } else if (facility.Facility_Survey_Date_Last && !facility.Facility_Survey_Date_Next) {
-                metadata.push("");
-                previousDate = facility.Facility_Survey_Date_Last.slice(0, 10)
-                metadata.push(previousDate);
-                metadata.push("");
-            } else if (!facility.Facility_Survey_Date_Last && !facility.Facility_Survey_Date_Last) {
-                metadata.push("");
-                metadata.push("");
-                metadata.push("");
-            };
-            data.push(metadata); // Put all the data together
+/**
+ * use this method to read the text content, of some node.
+ * It is great if you have mixed content like:
+ * this text has some <b>big</b> text and a <a href=''>link</a>
+ * @return {string}
+ */
+export function toContentString(tDom) {
+    if (Array.isArray(tDom)) {
+        var out = '';
+        tDom.forEach(function (e) {
+            out += ' ' + toContentString(e);
+            out = out.trim();
         });
-
-        let csvContent = ""
-            + data.map(e => e.join(",")).join("\n");
-        // we join all arrays into strings from our data array passying them in to csvContent
-        let csvData = new Blob([csvContent], { type: 'text/csv' }); // pass in the string data into a blob object and specify the data type
-        let csvUrl = URL.createObjectURL(csvData); // convert the blob into a URL string which can be attached to an <a> tag
-        let link = document.createElement('a'); // we create an anchor element so we can attach an the our new csv file to it as the source
-        link.href = csvUrl; // link the csv file
-        link.target = '_blank'; //opens new tab to download
-        link.download = "converted" + '.csv'; //we name the file "converted" and add the .csv extension
-        link.click(); // we click our own element to download our sourced file.
-
-        let secondaryLink = document.querySelectorAll('dl-link')
-        secondaryLink.href = csvUrl;
-        secondaryLink.target = '_blank'
-        link.download = "converted" + '.csv';
-        if (errors) {
-            setErrors(null) //if errors we're present before this is where we reset them
-        }
-        setFormState(false) // change what is rendered in jsx based on setFormState property
+        return out;
+    } else if (typeof tDom === 'object') {
+        return toContentString(tDom.children)
+    } else {
+        return ' ' + tDom;
     }
-    catch (e) {
-        setErrors("Incorrect file type imported")
-        console.log(e)
-    };
 };
 
-const handleUpload = (file) => {
-    fileReader = new FileReader(); // a new instance of FileReader is created which allows us to read the contents of the uploaded file
-    fileReader.onloadend = handleFileRead; // Once we finish reading the data, the assigned function will be invoke
-    fileReader.readAsText(file); // We feed our uploaded file into the File Reader which will invoke our handleFileRead function passing in the file.
+export function getElementById(S, id, simplified) {
+    var out = parse(S, {
+        attrValue: id
+    });
+    return simplified ? tXml.simplify(out) : out[0];
 };
 
-const newConversion = () => {
-    setFormState(true);
+export function getElementsByClassName(S, classname, simplified) {
+    const out = parse(S, {
+        attrName: 'class',
+        attrValue: '[a-zA-Z0-9- ]*' + classname + '[a-zA-Z0-9- ]*'
+    });
+    return simplified ? tXml.simplify(out) : out;
 };
